@@ -133,5 +133,8 @@ $url = 'https://www.avito.ru/syktyvkar/avtomobili?radius=200&s_trg=13';
 loadAvitoPages($url, $fromPage=1, $toPage=1);
 
 
+// test
+
+
 echo '<hr />';
 
