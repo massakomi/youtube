@@ -60,7 +60,7 @@ function curlLoad($url, $cash=0)
     return $content;
 }
 
-function parseAvito($url)
+function parseAvitoPage($url)
 {
     $content = curlLoad($url, $cash=3600);
 
@@ -68,9 +68,7 @@ function parseAvito($url)
     $innerContent = $a[0];
 
     $rows = preg_split('~<div class="item item_table~is', $innerContent);
-    if ($rows) {
-    	array_shift($rows);
-    }
+    array_shift($rows);
 
     //preg_match_all('~<div class="item item_table.*?</div>\s*</div>\s*</div>~is', $innerContent, $rows);
 
@@ -78,9 +76,9 @@ function parseAvito($url)
     foreach ($rows as $key => $rowContent) {
         //echo '<pre>'.htmlspecialchars($rowContent).'</pre>';
 
-        preg_matchx('~<span itemprop="name">(.*?)</span>~i', $rowContent, $a);
+        preg_match('~<span itemprop="name">(.*?)</span>~i', $rowContent, $a);
         $name = $a[1];
-        preg_matchx('~itemprop="price"\s*content="(.*?)"~i', $rowContent, $a);
+        preg_match('~itemprop="price"\s*content="(.*?)"~i', $rowContent, $a);
         $price = $a[1];
 
         //echo '<br />-'.($key + 1).') '.$name.' --- <b>'.$price.'</b>';
@@ -94,47 +92,66 @@ function preg_matchx($regexp, $content, &$results)
 {
     $res = preg_match($regexp, $content, $results);
     if (!$res) {
-        echo '<div style="color:red">Ошибка выполнения preg_match "'.htmlspecialchars($regexp).'"</div>';
+        echo '<div style="color:red">Ошибка preg_match - "'.htmlspecialchars($regexp).'"</div>';
     }
     return $res;
 }
 
-function loadAvitoPages($urlInit, $fromPage=1, $toPage=false)
+function preg_match_allx($regexp, $content, &$results)
 {
-    $maxPages = 3;
-    $page = $fromPage;
-    while (true) {
-        if ($page == 1) {
-        	$add = '';
-        } else {
-        	$add = '&p='.$page;
-        }
-        $url = $urlInit . $add;
-        $data = parseAvito($url);
-        echo '<br />'.$url;
-        echo ' '.count($data);
-        /*foreach ($data as $k => $v) {
-            echo '<br />'.$k.') '.$v['name'];
-        }*/
-        // break;
-        if (!count($data)) {
-        	break;
-        }
-        if ($toPage && $page >= $toPage) {
-        	break;
-        }
-        $page ++;
+    $res = preg_match_all($regexp, $content, $results);
+    if (!$res) {
+        echo '<div style="color:red">Ошибка preg_match_all - "'.htmlspecialchars($regexp).'"</div>';
     }
+    return $res;
 }
 
 
 
-$url = 'https://www.avito.ru/syktyvkar/avtomobili?radius=200&s_trg=13';
-loadAvitoPages($url, $fromPage=1, $toPage=1);
+function parseAvitoAll($url, $fromPage=1, $maxPage=false)
+{
+    $dataAll = [];
+    $page = $fromPage;
+    while (true) {
+
+        if ($page == 1) {
+        	$urlCurrent = $url;
+        } else {
+            if (strpos($url, '?')) {
+            	$urlCurrent = str_replace('?', '?p='.$page.'&', $url);
+            } else {
+                $urlCurrent = $url.'?='.$page;
+            }
+        }
+
+        //echo '<br />'.$urlCurrent;
+
+        $data = parseAvitoPage($urlCurrent);
+
+        //var_dump(count($data));
+
+        if (!count($data)) {
+            break;
+        }
+        $dataAll = array_merge($dataAll, $data);
+
+        if ($maxPage && $page == $maxPage) {
+        	break;
+        }
+        $page ++;
+    }
+    return $dataAll;
+}
 
 
-// test
+$url = 'https://www.avito.ru/syktyvkar/avtomobili?radius=200';
+$data = parseAvitoAll($url, $fromPage=1, $maxPage=5);
+
+var_dump(count($data));
 
 
 echo '<hr />';
+
+
+
 
