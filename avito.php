@@ -82,6 +82,10 @@ function curlLoad($url, $cash=0)
 
     sleep(rand(2, 5));
 
+    $file = fopen('log.txt', 'a+');
+    fwrite($file, "\n".date('Y-m-d H:i:s').' '.$url);
+    fclose($file);
+
     setCache($content, $cacheId);
     return $content;
 }
@@ -166,7 +170,7 @@ function parseAvitoPage($url)
         $row['date'] = getAvitoDate($a[1]);
 
         preg_match('~data-item-url="([^"]+)"~i', $rowContent, $a);
-        $row['url'] = $a[1];
+        $row['url'] = 'https://www.avito.ru'.$a[1];
 
         preg_match('~data-item-id="(\d+)"~i', $rowContent, $a);
         $row['id'] = $a[1];
@@ -180,9 +184,51 @@ function parseAvitoPage($url)
         preg_match('~itemprop="price"\s*content="(\d+)"~i', $rowContent, $a);
         $row['price'] = $a[1];
 
-        //echo '<pre>'; print_r($row); echo '</pre>';
 
-        //exit;
+        $cardContent = curlLoad($row['url'], 86400);
+
+        // Извлекаем статистику
+        $row['views-total'] = $row['views-today'] = 0;
+        if (preg_match('~<a href="#" class="js-show-stat" data-config=\'\{ "type": "item", "url": "([^"]+)" \}\'>([^<]+)</a>~i', $cardContent, $a)) {
+            $statValues = $a[2];
+            if (preg_match('~(\d+)\s+\(\+(\d+)\)~i', $statValues, $b)) {
+                $row['views-total'] = intval($b[1]);
+                $row['views-today'] = intval($b[2]);
+            } else {
+                $row['views-total'] = intval($statValues);
+            }
+
+            $statUrl = 'https://www.avito.ru'.$a[1];
+            $statContent = curlLoad($statUrl, 86400);
+
+            preg_match('~Дата подачи объявления: <strong>([^<]+)</strong>~i', $statContent, $a);
+            $row['date-added'] = $a[1];
+
+            $row['stat'] = [];
+            if (preg_match('~data-chart=\'(.*?)\'~i', $statContent, $a)) {
+                $chart = json_decode($a[1], true);
+                foreach ($chart['columns'][0] as $k => $timestamp) {
+                    if (!$k) {
+                        continue;
+                    }
+                    $row['stat'][date('Y-m-d', $timestamp / 1000)] = $chart['columns'][1][$k];
+                }
+            }
+        }
+
+
+        preg_match('~<div class="item-description-text" itemprop="description">(.*?)</div>~is', $cardContent, $a);
+        $row['text'] = $a[1];
+
+        preg_match_all('~data-url="(//\d+.img.avito.st/1280[^"]+jpg)"~i', $cardContent, $a);
+        $row['images'] = $a[1];
+
+        preg_match_all('~<li class="item-params-list-item">\s*<span class="item-params-label">(.*?):\s+</span>(.*?)</li>~is', $cardContent, $a);
+        $row['params'] = [];
+        foreach ($a[1] as $k => $name) {
+        	$row['params'][$name] = trim($a[2][$k]);
+        }
+
         $data []= $row;
     }
     return $data;
