@@ -1,94 +1,7 @@
 <?php
 
-
-
-// Технические функции
-
-function setCache($content, $cacheId)
-{
-    if ($content == '') {
-        return ;
-    }
-    $fileName = 'cash/'.md5($cacheId);
-    if (!file_exists('cash')) {
-        mkdir('cash');
-    }
-    $f = fopen($fileName, 'w+');
-    fwrite($f, $content);
-    fclose($f);
-}
-
-function getCache($cacheId, $cashExpired=true, &$fileName='')
-{
-    if (!$cashExpired) {
-        return ;
-    }
-    $fileName = 'cash/'.md5($cacheId);
-    if (!file_exists($fileName)) {
-        return false;
-    }
-    $time = time() - filemtime($fileName);
-    if ($time > $cashExpired) {
-        return false;
-    }
-    return file_get_contents($fileName);
-}
-
-function curlLoad($url, $cash=0)
-{
-    $cacheId = $url;
-    if ($content = getCache($cacheId, $cash)) {
-        if (!strpos($content, 'Location: https://www.avito.ru/blocked')) {
-        	return $content;
-        }
-    }
-
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-    curl_setopt($ch, CURLOPT_HEADER, 1);
-
-    $headers = array(
-        ':authority: www.avito.ru',
-        ':method: GET',
-        ':path: '.str_replace('https://www.avito.ru', '', $url),
-        ':scheme: https',
-        'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-        //'accept-encoding: gzip, deflate, br',
-        'accept-language: ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7,de;q=0.6,vi;q=0.5',
-        'cache-control: max-age=0',
-        'cookie: f=5.0c4f4b6d233fb90636b4dd61b04726f147e1eada7172e06c47e1eada7172e06c47e1eada7172e06c47e1eada7172e06cb59320d6eb6303c1b59320d6eb6303c1b59320d6eb6303c147e1eada7172e06c8a38e2c5b3e08b898a38e2c5b3e08b890df103df0c26013a0df103df0c26013a2ebf3cb6fd35a0ac0df103df0c26013a8b1472fe2f9ba6b984dcacfe8ebe897bfa4d7ea84258c63d59c9621b2c0fa58f897baa7410138ead3de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe23de19da9ed218fe207b7a18108a6dcd6f8ee35c29834d631c9ba923b7b327da7e87a84e371fc60d21abab15028c5344d5e61d702b2ac73f7ef858355226994bc0e687930c3e21aed9b875d7b97b5db61daa659585eecd48d4938c41efda3055a8f1786dad6fd98129e82118971f2ed64956cdff3d4067aa532311436535e092c55e252f6e73349e33de19da9ed218fe23de19da9ed218fe2b9e742668625d8bf514b821ed3011c9e517083b9c0063862',
-        'upgrade-insecure-requests: 1',
-        'referer: '.$url,
-        'user-agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36'
-    );
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-    $content = curl_exec($ch);
-    curl_close($ch);
-
-    $rx = '~^(HTTP.*?)(\r\n\r\n|\n\n)~is';
-    preg_match($rx, $content, $a);
-    $header = $a[0];
-    $content = str_replace($header, '', $content);
-
-    if (strpos($header, 'Location: https://www.avito.ru/blocked')) {
-        echo '<h3>Заблокировали</h3>';
-        echo '<pre>'.$header.'</pre>';
-        exit;
-    }
-
-    sleep(rand(2, 5));
-
-    $file = fopen('log.txt', 'a+');
-    fwrite($file, "\n".date('Y-m-d H:i:s').' '.$url);
-    fclose($file);
-
-    setCache($content, $cacheId);
-    return $content;
-}
+include_once 'Class.Avito.php';
+include_once 'Class.Curl.php';
 
 function preg_matchx($regexp, $content, &$results)
 {
@@ -126,161 +39,14 @@ function GET($key, $default='')
     }
 }
 
-// Авито класс
-class Avito {
+$avito = new Avito;
 
-    public $loadCard;
-    public $loadStat;
+if ($_POST['action'] == 'parseCard') {
 
+    $avito->parseCard($_POST['url'], $row);
 
-    function getDate($dateString)
-    {
-        $date = $dateString;
-
-        $date = str_replace('&nbsp;', ' ', $date);
-        $date = str_replace('Сегодня', date('Y-m-d'), $date);
-        $date = str_replace('Вчера', date('Y-m-d', strtotime(date('Y-m-d').' -1 day')), $date);
-        $date = trim($date);
-        $date .= ':00';
-
-        $date = strtotime($date);
-        return $date;
-    }
-
-    function parseAll($url, $fromPage=1, $maxPage=false)
-    {
-        $dataAll = [];
-        $page = $fromPage;
-        while (true) {
-
-            if ($page == 1) {
-            	$urlCurrent = $url;
-            } else {
-                if (strpos($url, '?')) {
-                	$urlCurrent = str_replace('?', '?p='.$page.'&', $url);
-                } else {
-                    $urlCurrent = $url.'?='.$page;
-                }
-            }
-
-            //echo '<br />'.$urlCurrent;
-
-            $data = $this->parsePage($urlCurrent);
-
-            //var_dump(count($data));
-
-            if (!count($data)) {
-                break;
-            }
-            $dataAll = array_merge($dataAll, $data);
-
-            if ($maxPage && $page == $maxPage) {
-            	break;
-            }
-            $page ++;
-        }
-        return $dataAll;
-    }
-
-    function parsePage($url)
-    {
-        $content = curlLoad($url, $cash=3600);
-
-        preg_matchx('~<div class="js-catalog_before-ads">.*?<div class="avito-ads-container avito-ads-container_desktop_low">~is', $content, $a);
-        $innerContent = $a[0];
-
-        $rows = preg_split('~<div class="item item_table~is', $innerContent);
-        array_shift($rows);
-
-        //preg_match_all('~<div class="item item_table.*?</div>\s*</div>\s*</div>~is', $innerContent, $rows);
-
-        $data = [];
-        foreach ($rows as $key => $rowContent) {
-            //echo '<pre>'.htmlspecialchars($rowContent).'</pre>';
-
-            $row = [];
-
-            preg_match('~<span itemprop="name">(.*?)</span>~i', $rowContent, $a);
-            $row['name'] = $a[1];
-
-            preg_match('~\d{4}~i', $row['name'], $a);
-            $row['year'] = $a[0];
-
-            preg_match('~data-absolute-date="\s*([^"]+)\s*"~i', $rowContent, $a);
-            $row['date'] = $this->getDate($a[1]);
-
-            preg_match('~data-item-url="([^"]+)"~i', $rowContent, $a);
-            $row['url'] = 'https://www.avito.ru'.$a[1];
-
-            preg_match('~data-item-id="(\d+)"~i', $rowContent, $a);
-            $row['id'] = $a[1];
-
-            preg_match('~>\s+([\d\s]+) км~i', $rowContent, $a);
-            $row['probeg'] = preg_replace('~[^\d]~i', '', $a[1]);
-
-            preg_match('~</p>\s+<p>([^<]+)</p>~i', $rowContent, $a);
-            $row['region'] = $a[1];
-
-            preg_match('~itemprop="price"\s*content="(\d+)"~i', $rowContent, $a);
-            $row['price'] = $a[1];
-
-            if ($this->loadCard) {
-            	$this->parseCard($row);
-            }
-
-            $data []= $row;
-        }
-        return $data;
-    }
-
-    private function parseCard(&$row)
-    {
-        $cardContent = curlLoad($row['url'], 86400);
-
-        // Извлекаем статистику
-        $row['views-total'] = $row['views-today'] = 0;
-        if (preg_match('~<a href="#" class="js-show-stat" data-config=\'\{ "type": "item", "url": "([^"]+)" \}\'>([^<]+)</a>~i', $cardContent, $a)) {
-            $statValues = $a[2];
-            if (preg_match('~(\d+)\s+\(\+(\d+)\)~i', $statValues, $b)) {
-                $row['views-total'] = intval($b[1]);
-                $row['views-today'] = intval($b[2]);
-            } else {
-                $row['views-total'] = intval($statValues);
-            }
-
-            if ($this->loadStat) {
-                $statUrl = 'https://www.avito.ru'.$a[1];
-                $statContent = curlLoad($statUrl, 86400);
-
-                preg_match('~Дата подачи объявления: <strong>([^<]+)</strong>~i', $statContent, $a);
-                $row['date-added'] = $a[1];
-
-                $row['stat'] = [];
-                if (preg_match('~data-chart=\'(.*?)\'~i', $statContent, $a)) {
-                    $chart = json_decode($a[1], true);
-                    foreach ($chart['columns'][0] as $k => $timestamp) {
-                        if (!$k) {
-                            continue;
-                        }
-                        $row['stat'][date('Y-m-d', $timestamp / 1000)] = $chart['columns'][1][$k];
-                    }
-                }
-            }
-        }
-
-        preg_match('~<div class="item-description-text" itemprop="description">(.*?)</div>~is', $cardContent, $a);
-        $row['text'] = $a[1];
-
-        preg_match_all('~data-url="(//\d+.img.avito.st/1280[^"]+jpg)"~i', $cardContent, $a);
-        $row['images'] = $a[1];
-
-        preg_match_all('~<li class="item-params-list-item">\s*<span class="item-params-label">(.*?):\s+</span>(.*?)</li>~is', $cardContent, $a);
-        $row['params'] = [];
-        foreach ($a[1] as $k => $name) {
-        	$row['params'][$name] = trim($a[2][$k]);
-        }
-    }
-
+    echo '<pre>'; print_r($row); echo '</pre>';
+    exit;
 }
 
 
@@ -312,8 +78,30 @@ $url = $_POST['url'] ?: $url;
     h1 {margin:20px 0 15px; font-size:24px;}
     .avito-form > div {margin-right:10px;}
     </style>
+
+    <!-- лоадер на css -->
+    <style type="text/css">
+    #loader {
+        border: 5px solid #f3f3f3; /* Light grey */
+        border-top: 5px solid #3498db; /* Blue */
+        border-radius: 50%;
+        width: 52px;
+        height: 52px;
+        animation: spin 2s linear infinite;
+        position:absolute;
+        top:7px; left:10px;
+        display:none;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    </style>
   </head>
   <body>
+
+<div id="loader"></div>
+
 
 <div class="container-fluid">
 
@@ -328,8 +116,8 @@ $url = $_POST['url'] ?: $url;
         <label>Показать как</label>
         <?php
         $showAs = [
-            'print_r' => 'print_r',
             'table' => 'Таблицей',
+            'print_r' => 'print_r',
             'excel' => 'Excel',
             'json' => 'JSON'
         ];
@@ -350,6 +138,11 @@ $url = $_POST['url'] ?: $url;
         <label>Загружать до</label>
         <input type="number" class="form-control" name="maxPage" value="<?=POST('maxPage', 1)?>" style="width:70px;">
       </div>
+      <div class="form-group">
+        <label>Sleep</label>
+        <input type="text" class="form-control" name="sleep_min" value="<?=POST('sleep_min', 2)?>" style="width:50px;">
+        <input type="text" class="form-control" name="sleep_max" value="<?=POST('sleep_max', 5)?>" style="width:50px;">
+      </div>
       <div class="checkbox">
         <label><input type="checkbox" <?php if ($_POST['load-card']) echo 'checked' ?> name="load-card" value="1"> Загружать карточку</label>
       </div>
@@ -365,13 +158,21 @@ $url = $_POST['url'] ?: $url;
 
 if ($_POST['url']) {
 
-    $avito = new Avito;
     $avito->loadCard = $_POST['load-card'];
     $avito->loadStat = $_POST['load-stat'];
+    $avito->curl->sleepMin = $_POST['sleep_min'];
+    $avito->curl->sleepMax = $_POST['sleep_max'];
 
     $data = $avito->parseAll($_POST['url'], $fromPage=1, $_POST['maxPage']);
 
-    echo '<hr />';
+?>
+
+<hr />
+
+
+<div class="row">
+    <div class="col-md-6">
+<?php
 
     if ($_POST['display'] == 'print_r') {
     	echo '<pre>'; print_r($data); echo '</pre>';
@@ -387,6 +188,7 @@ if ($_POST['url']) {
     <th>Цена</th>
     <th>Год</th>
     <th>Дата</th>
+    <th>&nbsp;</th>
 </tr>
 <?php
 foreach ($data as $k => $row) {
@@ -396,6 +198,7 @@ foreach ($data as $k => $row) {
         <td class="text-right"><?=number_format($row['price'], 0, ' ', ' ')?></td>
         <td><?=$row['year']?></td>
         <td><?=date('Y-m-d H:i:s', $row['date'])?></td>
+        <td><a href="#" data-url="<?=$row['url']?>">load</a></td>
     </tr>
     <?php
 }
@@ -403,6 +206,15 @@ foreach ($data as $k => $row) {
 </table>
 
         <?php
+
+?>
+    </div>
+    <div class="col-md-6" id="results">
+
+    </div>
+</div>
+<?php
+
     }
 
     
@@ -415,7 +227,35 @@ foreach ($data as $k => $row) {
 
 </div>
 
+
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+
+
+    <script type="text/javascript">
+
+    $(document).ready(function(){
+
+        $(document).ajaxStart(function() {
+            $('#loader').show();
+        });
+        $(document).ajaxStop(function() {
+            $('#loader').hide();
+        });
+
+        $('[type="submit"]').click(function() {
+            setTimeout(function(obj) {
+                obj.disabled = true;
+            }, 100, this);
+        })
+        $('[data-url]').click(function() {
+            var url = $(this).data('url')
+            $.post('', 'action=parseCard&url='+encodeURIComponent(url), function(data) {
+                $('#results').html(data)
+            });
+        })
+    });
+    </script>
+
   </body>
 </html>
