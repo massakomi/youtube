@@ -126,65 +126,115 @@ function GET($key, $default='')
     }
 }
 
-// Авито функции
+// Авито класс
+class Avito {
 
-function getAvitoDate($dateString)
-{
-    $date = $dateString;
-
-    $date = str_replace('&nbsp;', ' ', $date);
-    $date = str_replace('Сегодня', date('Y-m-d'), $date);
-    $date = str_replace('Вчера', date('Y-m-d', strtotime(date('Y-m-d').' -1 day')), $date);
-    $date = trim($date);
-    $date .= ':00';
-
-    $date = strtotime($date);
-    return $date;
-}
-
-function parseAvitoPage($url)
-{
-    $content = curlLoad($url, $cash=3600);
-
-    preg_matchx('~<div class="js-catalog_before-ads">.*?<div class="avito-ads-container avito-ads-container_desktop_low">~is', $content, $a);
-    $innerContent = $a[0];
-
-    $rows = preg_split('~<div class="item item_table~is', $innerContent);
-    array_shift($rows);
-
-    //preg_match_all('~<div class="item item_table.*?</div>\s*</div>\s*</div>~is', $innerContent, $rows);
-
-    $data = [];
-    foreach ($rows as $key => $rowContent) {
-        //echo '<pre>'.htmlspecialchars($rowContent).'</pre>';
-
-        $row = [];
-
-        preg_match('~<span itemprop="name">(.*?)</span>~i', $rowContent, $a);
-        $row['name'] = $a[1];
-
-        preg_match('~\d{4}~i', $row['name'], $a);
-        $row['year'] = $a[0];
-
-        preg_match('~data-absolute-date="\s*([^"]+)\s*"~i', $rowContent, $a);
-        $row['date'] = getAvitoDate($a[1]);
-
-        preg_match('~data-item-url="([^"]+)"~i', $rowContent, $a);
-        $row['url'] = 'https://www.avito.ru'.$a[1];
-
-        preg_match('~data-item-id="(\d+)"~i', $rowContent, $a);
-        $row['id'] = $a[1];
-
-        preg_match('~>\s+([\d\s]+) км~i', $rowContent, $a);
-        $row['probeg'] = preg_replace('~[^\d]~i', '', $a[1]);
-
-        preg_match('~</p>\s+<p>([^<]+)</p>~i', $rowContent, $a);
-        $row['region'] = $a[1];
-
-        preg_match('~itemprop="price"\s*content="(\d+)"~i', $rowContent, $a);
-        $row['price'] = $a[1];
+    public $loadCard;
+    public $loadStat;
 
 
+    function getDate($dateString)
+    {
+        $date = $dateString;
+
+        $date = str_replace('&nbsp;', ' ', $date);
+        $date = str_replace('Сегодня', date('Y-m-d'), $date);
+        $date = str_replace('Вчера', date('Y-m-d', strtotime(date('Y-m-d').' -1 day')), $date);
+        $date = trim($date);
+        $date .= ':00';
+
+        $date = strtotime($date);
+        return $date;
+    }
+
+    function parseAll($url, $fromPage=1, $maxPage=false)
+    {
+        $dataAll = [];
+        $page = $fromPage;
+        while (true) {
+
+            if ($page == 1) {
+            	$urlCurrent = $url;
+            } else {
+                if (strpos($url, '?')) {
+                	$urlCurrent = str_replace('?', '?p='.$page.'&', $url);
+                } else {
+                    $urlCurrent = $url.'?='.$page;
+                }
+            }
+
+            //echo '<br />'.$urlCurrent;
+
+            $data = $this->parsePage($urlCurrent);
+
+            //var_dump(count($data));
+
+            if (!count($data)) {
+                break;
+            }
+            $dataAll = array_merge($dataAll, $data);
+
+            if ($maxPage && $page == $maxPage) {
+            	break;
+            }
+            $page ++;
+        }
+        return $dataAll;
+    }
+
+    function parsePage($url)
+    {
+        $content = curlLoad($url, $cash=3600);
+
+        preg_matchx('~<div class="js-catalog_before-ads">.*?<div class="avito-ads-container avito-ads-container_desktop_low">~is', $content, $a);
+        $innerContent = $a[0];
+
+        $rows = preg_split('~<div class="item item_table~is', $innerContent);
+        array_shift($rows);
+
+        //preg_match_all('~<div class="item item_table.*?</div>\s*</div>\s*</div>~is', $innerContent, $rows);
+
+        $data = [];
+        foreach ($rows as $key => $rowContent) {
+            //echo '<pre>'.htmlspecialchars($rowContent).'</pre>';
+
+            $row = [];
+
+            preg_match('~<span itemprop="name">(.*?)</span>~i', $rowContent, $a);
+            $row['name'] = $a[1];
+
+            preg_match('~\d{4}~i', $row['name'], $a);
+            $row['year'] = $a[0];
+
+            preg_match('~data-absolute-date="\s*([^"]+)\s*"~i', $rowContent, $a);
+            $row['date'] = $this->getDate($a[1]);
+
+            preg_match('~data-item-url="([^"]+)"~i', $rowContent, $a);
+            $row['url'] = 'https://www.avito.ru'.$a[1];
+
+            preg_match('~data-item-id="(\d+)"~i', $rowContent, $a);
+            $row['id'] = $a[1];
+
+            preg_match('~>\s+([\d\s]+) км~i', $rowContent, $a);
+            $row['probeg'] = preg_replace('~[^\d]~i', '', $a[1]);
+
+            preg_match('~</p>\s+<p>([^<]+)</p>~i', $rowContent, $a);
+            $row['region'] = $a[1];
+
+            preg_match('~itemprop="price"\s*content="(\d+)"~i', $rowContent, $a);
+            $row['price'] = $a[1];
+
+            if ($this->loadCard) {
+            	$this->parseCard($row);
+            }
+
+            $data []= $row;
+        }
+        return $data;
+    }
+
+    private function parseCard(&$row)
+    {
         $cardContent = curlLoad($row['url'], 86400);
 
         // Извлекаем статистику
@@ -198,24 +248,25 @@ function parseAvitoPage($url)
                 $row['views-total'] = intval($statValues);
             }
 
-            $statUrl = 'https://www.avito.ru'.$a[1];
-            $statContent = curlLoad($statUrl, 86400);
+            if ($this->loadStat) {
+                $statUrl = 'https://www.avito.ru'.$a[1];
+                $statContent = curlLoad($statUrl, 86400);
 
-            preg_match('~Дата подачи объявления: <strong>([^<]+)</strong>~i', $statContent, $a);
-            $row['date-added'] = $a[1];
+                preg_match('~Дата подачи объявления: <strong>([^<]+)</strong>~i', $statContent, $a);
+                $row['date-added'] = $a[1];
 
-            $row['stat'] = [];
-            if (preg_match('~data-chart=\'(.*?)\'~i', $statContent, $a)) {
-                $chart = json_decode($a[1], true);
-                foreach ($chart['columns'][0] as $k => $timestamp) {
-                    if (!$k) {
-                        continue;
+                $row['stat'] = [];
+                if (preg_match('~data-chart=\'(.*?)\'~i', $statContent, $a)) {
+                    $chart = json_decode($a[1], true);
+                    foreach ($chart['columns'][0] as $k => $timestamp) {
+                        if (!$k) {
+                            continue;
+                        }
+                        $row['stat'][date('Y-m-d', $timestamp / 1000)] = $chart['columns'][1][$k];
                     }
-                    $row['stat'][date('Y-m-d', $timestamp / 1000)] = $chart['columns'][1][$k];
                 }
             }
         }
-
 
         preg_match('~<div class="item-description-text" itemprop="description">(.*?)</div>~is', $cardContent, $a);
         $row['text'] = $a[1];
@@ -228,47 +279,9 @@ function parseAvitoPage($url)
         foreach ($a[1] as $k => $name) {
         	$row['params'][$name] = trim($a[2][$k]);
         }
-
-        $data []= $row;
     }
-    return $data;
+
 }
-
-function parseAvitoAll($url, $fromPage=1, $maxPage=false)
-{
-    $dataAll = [];
-    $page = $fromPage;
-    while (true) {
-
-        if ($page == 1) {
-        	$urlCurrent = $url;
-        } else {
-            if (strpos($url, '?')) {
-            	$urlCurrent = str_replace('?', '?p='.$page.'&', $url);
-            } else {
-                $urlCurrent = $url.'?='.$page;
-            }
-        }
-
-        //echo '<br />'.$urlCurrent;
-
-        $data = parseAvitoPage($urlCurrent);
-
-        //var_dump(count($data));
-
-        if (!count($data)) {
-            break;
-        }
-        $dataAll = array_merge($dataAll, $data);
-
-        if ($maxPage && $page == $maxPage) {
-        	break;
-        }
-        $page ++;
-    }
-    return $dataAll;
-}
-
 
 
 $url = 'https://www.avito.ru/syktyvkar/avtomobili?radius=200';
@@ -297,6 +310,7 @@ $url = $_POST['url'] ?: $url;
 
     <style type="text/css">
     h1 {margin:20px 0 15px; font-size:24px;}
+    .avito-form > div {margin-right:10px;}
     </style>
   </head>
   <body>
@@ -305,15 +319,42 @@ $url = $_POST['url'] ?: $url;
 
     <h1>Парсер Авито</h1>
 
-    <form class="form-inline" method="post">
+    <form class="form-inline avito-form" method="post">
       <div class="form-group">
         <label><a href="<?=$url?>" target="_blank">URL</a></label>
         <input type="text" class="form-control" name="url" value="<?=$url?>" style="width:400px;">
       </div>
-&nbsp;
+      <div class="form-group">
+        <label>Показать как</label>
+        <?php
+        $showAs = [
+            'print_r' => 'print_r',
+            'table' => 'Таблицей',
+            'excel' => 'Excel',
+            'json' => 'JSON'
+        ];
+        ?>
+        <select name="display" class="form-control">
+            <?php
+            foreach ($showAs as $k => $v) {
+                $add = '';
+                if ($_POST['display'] == $k) {
+                	$add = ' selected';
+                }
+                echo '<option'.$add.' value="'.$k.'">'.$v.'</option>';
+            }
+            ?>
+        </select>
+      </div>
       <div class="form-group">
         <label>Загружать до</label>
         <input type="number" class="form-control" name="maxPage" value="<?=POST('maxPage', 1)?>" style="width:70px;">
+      </div>
+      <div class="checkbox">
+        <label><input type="checkbox" <?php if ($_POST['load-card']) echo 'checked' ?> name="load-card" value="1"> Загружать карточку</label>
+      </div>
+      <div class="checkbox">
+        <label><input type="checkbox" <?php if ($_POST['load-stat']) echo 'checked' ?> name="load-stat" value="1"> Загружать статистику</label>
       </div>
       <button type="submit" class="btn btn-default">Выполнить</button>
     </form>
@@ -324,10 +365,47 @@ $url = $_POST['url'] ?: $url;
 
 if ($_POST['url']) {
 
-    $data = parseAvitoAll($_POST['url'], $fromPage=1, $_POST['maxPage']);
+    $avito = new Avito;
+    $avito->loadCard = $_POST['load-card'];
+    $avito->loadStat = $_POST['load-stat'];
+
+    $data = $avito->parseAll($_POST['url'], $fromPage=1, $_POST['maxPage']);
 
     echo '<hr />';
-    echo '<pre>'; print_r($data); echo '</pre>';
+
+    if ($_POST['display'] == 'print_r') {
+    	echo '<pre>'; print_r($data); echo '</pre>';
+    }
+
+    if ($_POST['display'] == 'table') {
+    	// echo '<pre>'; print_r($data); echo '</pre>';
+        ?>
+
+<table class="table table-condensed table-bordered table-hover" style="width:auto">
+<tr>
+    <th>Название</th>
+    <th>Цена</th>
+    <th>Год</th>
+    <th>Дата</th>
+</tr>
+<?php
+foreach ($data as $k => $row) {
+    ?>
+    <tr>
+        <td><a href="<?=$row['url']?>" target="_blank"><?=$row['name']?></a></td>
+        <td class="text-right"><?=number_format($row['price'], 0, ' ', ' ')?></td>
+        <td><?=$row['year']?></td>
+        <td><?=date('Y-m-d H:i:s', $row['date'])?></td>
+    </tr>
+    <?php
+}
+?>
+</table>
+
+        <?php
+    }
+
+    
 }
 
 
