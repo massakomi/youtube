@@ -102,6 +102,8 @@ class Avito {
             preg_match('~itemprop="price"\s*content="(\d+)"~i', $rowContent, $a);
             $row['price'] = $a[1];
 
+            Log::get()->log($row['name']);
+
             if ($this->loadCard) {
             	$this->parseCard($row['url'], $row);
             }
@@ -114,6 +116,7 @@ class Avito {
     function parseCard($url, &$row)
     {
         $cardContent = $this->curl->load($url, 86400);
+        Log::get()->log(' card['.strlen($cardContent).']', 0);
 
         //var_dump(strlen($cardContent));
 
@@ -134,6 +137,7 @@ class Avito {
 
                 preg_match('~Дата подачи объявления: <strong>([^<]+)</strong>~i', $statContent, $a);
                 $row['date-added'] = $a[1];
+                Log::get()->log(' stat['.strlen($statContent).']['.$a[1].']', 0);
 
                 $row['stat'] = [];
                 if (preg_match('~data-chart=\'(.*?)\'~i', $statContent, $a)) {

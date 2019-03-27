@@ -1,7 +1,8 @@
 <?php
 
-include_once 'Class.Avito.php';
-include_once 'Class.Curl.php';
+spl_autoload_register(function ($class_name) {
+    include 'Class.'.$class_name.'.php';
+});
 
 function preg_matchx($regexp, $content, &$results)
 {
@@ -50,6 +51,43 @@ if ($_POST['action'] == 'parseCard') {
 }
 
 
+if ($_POST['action'] == 'parsePhone') {
+
+    // Подготавливаем входные параметры
+    $url = $_POST['url'];
+    preg_match('~_(\d+)$~i', $url, $a);
+    $id = $a[1];
+    $cardContent = $avito->curl->load($url, 0);
+
+    // Определяем phoneUrl
+    $avitoContact = new AvitoContact;
+    $phoneUrl = $avitoContact->getPhoneUrl($cardContent, $id);
+
+    // Грузим картинку по phoneUrl
+    $imgContent = $avito->curl->load($phoneUrl, 0);
+
+    // Разбираем ее и сохраняем в файл
+    $img = json_decode($imgContent);
+    $avitoContact->saveInFile($img->image64, 'phone.png');
+
+    // Распознаем файл
+    $result = $avitoContact->recognize('phone.png');
+
+    echo '<p>URL: '.$phoneUrl.'</p>';
+
+    echo '<p><img src="'.$img->image64.'" alt="" /></p>';
+
+    echo '<p><a href="#" onclick="jQuery(\'#debugOutput\').slideToggle(); return false;">Цветовая схема</a></p>';
+    echo '<div id="debugOutput" style="display:none;">'.$avitoContact->debugOutput.'</div>';
+
+    if ($result) {
+        echo '<h2 class="text-success">Результат - '.$result.'</h2>';
+    } else {
+        echo '<h2 class="text-danger">Ничего не получилось</h2>';
+    }
+    exit;
+}
+
 $url = 'https://www.avito.ru/syktyvkar/avtomobili?radius=200';
 $url = $_POST['url'] ?: $url;
 
@@ -77,6 +115,7 @@ $url = $_POST['url'] ?: $url;
     <style type="text/css">
     h1 {margin:20px 0 15px; font-size:24px;}
     .avito-form > div {margin-right:10px;}
+    .form-inline .form-group {margin-bottom:10px;}
     </style>
 
     <!-- лоадер на css -->
@@ -108,10 +147,11 @@ $url = $_POST['url'] ?: $url;
     <h1>Парсер Авито</h1>
 
     <form class="form-inline avito-form" method="post">
-      <div class="form-group">
-        <label><a href="<?=$url?>" target="_blank">URL</a></label>
+      <div class="form-group input-group">
+        <span class="input-group-addon"><a href="<?=$url?>" target="_blank">URL</a></span>
         <input type="text" class="form-control" name="url" value="<?=$url?>" style="width:400px;">
       </div>
+
       <div class="form-group">
         <label>Показать как</label>
         <?php
@@ -156,6 +196,7 @@ $url = $_POST['url'] ?: $url;
 
 <?php
 
+
 if ($_POST['url']) {
 
     $avito->loadCard = $_POST['load-card'];
@@ -198,7 +239,10 @@ foreach ($data as $k => $row) {
         <td class="text-right"><?=number_format($row['price'], 0, ' ', ' ')?></td>
         <td><?=$row['year']?></td>
         <td><?=date('Y-m-d H:i:s', $row['date'])?></td>
-        <td><a href="#" data-url="<?=$row['url']?>">load</a></td>
+        <td>
+        <a href="#" data-url="<?=$row['url']?>" class="label label-info">load</a>
+        <a href="#" data-phone="<?=$row['url']?>" class="label label-warning">разбор телефона</a>
+        </td>
     </tr>
     <?php
 }
@@ -217,7 +261,66 @@ foreach ($data as $k => $row) {
 
     }
 
+
+
+} elseif ($_GET['action'] == 'contact') {
+    $avitoContact = new AvitoContact;
+
+    $imageScheme = $avitoContact->getImageScheme('phone.png', $_POST['columnFrom'], $_POST['columnTo']);
+
+    ?>
+    <h3>Разбор телефона</h3>
+
+    <form method="post" class="form-inline">
+
+        <div class="form-group">
+            <label>Показать колонку с индекса</label>
+            <input type="text" name="columnFrom" class="form-control" style="width:75px;" value="<?=$_POST['columnFrom']?>" />
+            до
+            <input type="text" name="columnTo" class="form-control" style="width:75px;" value="<?=$_POST['columnTo']?>" />
+        </div>
+
+        <input class="btn btn-info" type="submit" value="Показать">
+    </form>
+
+        <hr />
+
+    <?php
+    echo $avitoContact->debugOutput;
+
+    if ($_POST['columnTo']) {
+    	$textarea = $avitoContact->makeColumnData($imageScheme, $_POST['columnFrom'], $_POST['columnTo']);
+        echo '<textarea style="width:100%; height:200px; white-space: nowrap; font-size: 12px;">'.$textarea.'</textarea>';
+    }
+
+    $phoneNumber = $avitoContact->recognizeByScheme($imageScheme);
+
+    if ($avitoContact->error) {
+        echo '<p class="alert alert-danger">'.$avitoContact->error.'</p>';
+    }
+
+    if ($phoneNumber) {
+        $phoneNumber = 'Найдено значение - <b>'.$phoneNumber.'</b>';
+    } else {
+        $phoneNumber = 'Не найдено ни одного символа';
+    }
     
+
+    echo '<p class="badge" style="margin-top:10px; font-size:60px;">'.$phoneNumber.'</p><br /><br />';
+
+} else {
+    ?>
+    <br />
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="jumbotron">
+            <h1>Всем Привет!</h1>
+            <p>Для начала поиска нажмите кнопку в форме</p>
+            <p><a class="btn btn-primary btn-lg" href="https://www.youtube.com/channel/UC_OWLEdM9zNSF-JDUH3tsww/featured" role="button">Начать поиск</a></p>
+            </div>
+        </div>
+    </div>
+    <?php
 }
 
 
@@ -248,9 +351,17 @@ foreach ($data as $k => $row) {
                 obj.disabled = true;
             }, 100, this);
         })
+
         $('[data-url]').click(function() {
             var url = $(this).data('url')
             $.post('', 'action=parseCard&url='+encodeURIComponent(url), function(data) {
+                $('#results').html(data)
+            });
+        })
+
+        $('[data-phone]').click(function() {
+            var url = $(this).data('phone')
+            $.post('', 'action=parsePhone&url='+encodeURIComponent(url), function(data) {
                 $('#results').html(data)
             });
         })

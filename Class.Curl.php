@@ -50,6 +50,10 @@ class Curl {
             	return $content;
             }
         }
+        if (strpos($url, 'http') !== 0) {
+            echo 'Неправильный урл запроса "'.$url.'"';
+            return false;
+        }
 
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
