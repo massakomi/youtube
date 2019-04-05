@@ -165,4 +165,41 @@ class Avito {
         }
     }
 
+    function getCategoriesOptions($selected)
+    {
+        $categories = $this->getCategories();
+        return $this->getOptions($categories, $selected);
+    }
+
+    function getOptions($categories, $selected='', $level=0)
+    {
+        if (!$categories) {
+            return ;
+        }
+        $opts = '';
+        foreach ($categories as $k => $v) {
+            $value = 'https://www.avito.ru'.$v['url'];
+            $add = '';
+            if ($selected == $value) {
+            	$add = ' selected';
+            }
+            $tab = str_repeat('-', $level * 4);
+            // echo '<br />'.$tab.' <a href="'.$v['url'].'" target="_blank" data-categoryId="'.$v['categoryId'].'" data-params="id='.$v['id'].'&mcId='.$v['mcId'].'">'.$v['name'].'</a>';
+            $opts .= '<option value="'.$value.'"'.$add.'>'.$tab.$v['name'].'</option>';
+            if ($v['subs']) {
+            	$opts .= $this->getOptions($v['subs'], $selected, $level + 1);
+            }
+        }
+        return $opts;
+    }
+
+    function getCategories()
+    {
+        $content = $this->curl->load('https://www.avito.ru/', 86400*7);
+        preg_match('~<div class=\'js-lateral-rubricator\' data-state=\'(.*?)\'>~is', $content, $a);
+        $categories = json_decode($a[1], true)['categoryTree'][0]['subs'];
+        return $categories;
+    }
+
+
 }

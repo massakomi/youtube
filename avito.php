@@ -40,6 +40,20 @@ function GET($key, $default='')
     }
 }
 
+function drawArray($data)
+{
+    echo '$cookie = [';
+    foreach ($data as $k => $v) {
+        echo '<br />&nbsp;&nbsp;&nbsp;&nbsp;'."'$v',";
+    }
+    echo '<br />];';
+}
+
+function cookieArray($cookie)
+{
+    echo drawArray(explode('; ', $cookie));
+}
+
 $avito = new Avito;
 
 if ($_POST['action'] == 'parseCard') {
@@ -88,6 +102,35 @@ if ($_POST['action'] == 'parsePhone') {
     exit;
 }
 
+
+/*
+// преобразовать строку кук в массив
+$cookies = 'сюда копировать куки-строку с браузера';
+cookieArray($cookies);
+exit;
+*/
+
+/*
+// load avito test
+$content = $avito->curl->load('https://www.avito.ru/', 0);
+$avito->curl->debug($content);
+exit;
+*/
+
+/*
+// proxy test
+$content = $avito->curl->load('https://avito.ru/', 0, [
+    CURLOPT_PROXY => '176.58.123.125',
+    CURLOPT_PROXYPORT => 3128,
+    // CURLPROXY_SOCKS4, CURLPROXY_SOCKS5, CURLPROXY_SOCKS4A или CURLPROXY_SOCKS5_HOSTNAME
+    CURLOPT_PROXYTYPE => CURLPROXY_HTTP,
+    CURLOPT_TIMEOUT => 5
+]);
+$avito->curl->debug($content);
+exit;
+*/
+
+
 $url = 'https://www.avito.ru/syktyvkar/avtomobili?radius=200';
 $url = $_POST['url'] ?: $url;
 
@@ -113,13 +156,17 @@ $url = $_POST['url'] ?: $url;
     <![endif]-->
 
     <style type="text/css">
+    body {
+        background-repeat: no-repeat;
+        background-position: 0 0;
+        background-size: cover;
+        background-image: url(images/avitus5.jpg);
+        background-blend-mode: normal;
+    }
     h1 {margin:20px 0 15px; font-size:24px;}
     .avito-form > div {margin-right:10px;}
     .form-inline .form-group {margin-bottom:10px;}
-    </style>
-
-    <!-- лоадер на css -->
-    <style type="text/css">
+    /* лоадер на css */
     #loader {
         border: 5px solid #f3f3f3; /* Light grey */
         border-top: 5px solid #3498db; /* Blue */
@@ -151,6 +198,15 @@ $url = $_POST['url'] ?: $url;
         <span class="input-group-addon"><a href="<?=$url?>" target="_blank">URL</a></span>
         <input type="text" class="form-control" name="url" value="<?=$url?>" style="width:400px;">
       </div>
+
+      <?php $options = $avito->getCategoriesOptions($_POST['cat-url']) ?>
+      <div class="form-group">
+        <select name="cat-url" class="form-control">
+        <option value="">Использовать url</option>
+        <?php echo $options; ?>
+        </select>
+      </div>
+
 
       <div class="form-group">
         <label>Показать как</label>
@@ -197,14 +253,16 @@ $url = $_POST['url'] ?: $url;
 <?php
 
 
-if ($_POST['url']) {
+$url = $_POST['cat-url'] ?: $_POST['url'];
+
+if ($url) {
 
     $avito->loadCard = $_POST['load-card'];
     $avito->loadStat = $_POST['load-stat'];
     $avito->curl->sleepMin = $_POST['sleep_min'];
     $avito->curl->sleepMax = $_POST['sleep_max'];
 
-    $data = $avito->parseAll($_POST['url'], $fromPage=1, $_POST['maxPage']);
+    $data = $avito->parseAll($url, $fromPage=1, $_POST['maxPage']);
 
 ?>
 
@@ -313,11 +371,11 @@ foreach ($data as $k => $row) {
     <br />
     <div class="row">
         <div class="col-sm-12">
-            <div class="jumbotron">
+            <!-- <div class="jumbotron">
             <h1>Всем Привет!</h1>
             <p>Для начала поиска нажмите кнопку в форме</p>
             <p><a class="btn btn-primary btn-lg" href="https://www.youtube.com/channel/UC_OWLEdM9zNSF-JDUH3tsww/featured" role="button">Начать поиск</a></p>
-            </div>
+            </div> -->
         </div>
     </div>
     <?php
@@ -352,14 +410,16 @@ foreach ($data as $k => $row) {
             }, 100, this);
         })
 
-        $('[data-url]').click(function() {
+        $('[data-url]').click(function(e) {
+            e.preventDefault()
             var url = $(this).data('url')
             $.post('', 'action=parseCard&url='+encodeURIComponent(url), function(data) {
                 $('#results').html(data)
             });
         })
 
-        $('[data-phone]').click(function() {
+        $('[data-phone]').click(function(e) {
+            e.preventDefault()
             var url = $(this).data('phone')
             $.post('', 'action=parsePhone&url='+encodeURIComponent(url), function(data) {
                 $('#results').html(data)
