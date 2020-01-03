@@ -63,11 +63,13 @@ class Avito {
     function parsePage($url)
     {
         $content = $this->curl->load($url, $cash=3600);
-
-        preg_matchx('~<div class="js-catalog_before-ads">.*?<div class="avito-ads-container avito-ads-container_desktop_low">~is', $content, $a);
+         preg_matchx('~<div class="js-catalog_serp".*?<div class="avito-ads-container avito-ads-container_desktop_low">~is', $content, $a);
         $innerContent = $a[0];
 
-        $rows = preg_split('~<div class="item item_table~is', $innerContent);
+        $rows = preg_split($rx='~<div class="snippet-horizontal~is', $innerContent);
+        if (count($rows) == 1) {
+            throw new Exception('Ошибка регулярки "'.htmlspecialchars($rx).'"');
+        }
         array_shift($rows);
 
         //preg_match_all('~<div class="item item_table.*?</div>\s*</div>\s*</div>~is', $innerContent, $rows);
@@ -78,7 +80,7 @@ class Avito {
 
             $row = [];
 
-            preg_match('~<span itemprop="name">(.*?)</span>~i', $rowContent, $a);
+            preg_match('~target="_blank"\s*title="(.*?)"~is', $rowContent, $a);
             $row['name'] = $a[1];
 
             preg_match('~\d{4}~i', $row['name'], $a);
@@ -99,8 +101,8 @@ class Avito {
             preg_match('~</p>\s+<p>([^<]+)</p>~i', $rowContent, $a);
             $row['region'] = $a[1];
 
-            preg_match('~itemprop="price"\s*content="(\d+)"~i', $rowContent, $a);
-            $row['price'] = $a[1];
+            preg_match('~data-marker="item-price">(.*?)<~is', $rowContent, $a);
+            $row['price'] = preg_replace('~[^\d]~i', '', $a[1]);
 
             Log::get()->log($row['name']);
 
